@@ -1,4 +1,4 @@
-name: app-ci
+name: feature-ci
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: app-ci-${{ github.ref }}
+  group: feature-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

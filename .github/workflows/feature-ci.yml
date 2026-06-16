@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   detect-changes:
-    name: detect affected paths
+    name: detect-affected-paths
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -60,7 +60,7 @@ jobs:
               - '.node-version'
 
   secret-scan:
-    name: secret scan
+    name: secret-scan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -74,7 +74,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   frontend-checks:
-    name: frontend checks
+    name: frontend-checks
     runs-on: ubuntu-latest
     needs:
       - detect-changes
@@ -116,7 +116,7 @@ jobs:
         run: docker build --pull --tag mini-book-hub-frontend:feature-ci ./frontend
 
   book-service-checks:
-    name: book-service checks
+    name: book-service-checks
     runs-on: ubuntu-latest
     needs:
       - detect-changes
@@ -158,7 +158,7 @@ jobs:
         run: docker build --pull --tag mini-book-hub-book-service:feature-ci ./backend/book-service
 
   reader-service-checks:
-    name: reader-service checks
+    name: reader-service-checks
     runs-on: ubuntu-latest
     needs:
       - detect-changes
@@ -200,7 +200,7 @@ jobs:
         run: docker build --pull --tag mini-book-hub-reader-service:feature-ci ./backend/reader-service
 
   order-service-checks:
-    name: order-service checks
+    name: order-service-checks
     runs-on: ubuntu-latest
     needs:
       - detect-changes

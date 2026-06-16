@@ -3,18 +3,48 @@ const cors = require("cors");
 
 const app = express();
 const port = process.env.PORT || 3000;
-
-const books = [
-  { id: "b-101", title: "Cloud Notes", author: "A. Nguyen" },
-  { id: "b-102", title: "Kubernetes Field Guide", author: "M. Tran" },
-  { id: "b-103", title: "Terraform Lab Manual", author: "L. Pham" }
-];
+const books = require("./data/books.json");
 
 app.use(cors());
 app.use(express.json());
 
 app.get("/book", (_req, res) => {
   res.json({ service: "book-service", data: books });
+});
+
+app.get("/book/:id", (req, res) => {
+  const book = books.find((item) => item.id === req.params.id);
+
+  if (!book) {
+    res.status(404).json({
+      service: "book-service",
+      error: "book_not_found",
+      message: `Book ${req.params.id} was not found.`
+    });
+    return;
+  }
+
+  res.json({ service: "book-service", data: book });
+});
+
+app.get("/book/:id/availability", (req, res) => {
+  const book = books.find((item) => item.id === req.params.id);
+
+  if (!book) {
+    res.status(404).json({
+      service: "book-service",
+      error: "book_not_found",
+      message: `Book ${req.params.id} was not found.`
+    });
+    return;
+  }
+
+  res.json({
+    service: "book-service",
+    bookId: book.id,
+    available: book.availableCopies > 0,
+    availableCopies: book.availableCopies
+  });
 });
 
 app.get("/healthz", (_req, res) => {

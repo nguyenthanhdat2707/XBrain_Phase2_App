@@ -1,0 +1,20 @@
+[
+  {
+    "id": "o-301",
+    "readerId": "r-201",
+    "bookId": "b-101",
+    "status": "borrowed"
+  },
+  {
+    "id": "o-302",
+    "readerId": "r-202",
+    "bookId": "b-102",
+    "status": "reserved"
+  },
+  {
+    "id": "o-303",
+    "readerId": "r-203",
+    "bookId": "b-103",
+    "status": "returned"
+  }
+]

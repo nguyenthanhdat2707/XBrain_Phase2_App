@@ -43,7 +43,67 @@ test("GET /reader returns reader data", async () => {
     assert.equal(body.service, "reader-service");
     assert.equal(Array.isArray(body.data), true);
     assert.equal(body.data.length, 3);
-    assert.deepEqual(Object.keys(body.data[0]).sort(), ["favoriteGenre", "id", "name"]);
+    assert.deepEqual(Object.keys(body.data[0]).sort(), ["active", "favoriteGenre", "id", "name"]);
+  });
+});
+
+test("GET /reader/:id returns one reader", async () => {
+  await withServer(async (server) => {
+    const response = await fetch(endpoint(server, "/reader/r-201"));
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.service, "reader-service");
+    assert.deepEqual(body.data, {
+      id: "r-201",
+      name: "Linh",
+      favoriteGenre: "DevOps",
+      active: true
+    });
+  });
+});
+
+test("GET /reader/:id returns 404 for an unknown reader", async () => {
+  await withServer(async (server) => {
+    const response = await fetch(endpoint(server, "/reader/r-missing"));
+    const body = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.equal(body.service, "reader-service");
+    assert.equal(body.error, "reader_not_found");
+  });
+});
+
+test("GET /reader/:id/status returns active status", async () => {
+  await withServer(async (server) => {
+    const activeResponse = await fetch(endpoint(server, "/reader/r-201/status"));
+    const activeBody = await activeResponse.json();
+    const inactiveResponse = await fetch(endpoint(server, "/reader/r-203/status"));
+    const inactiveBody = await inactiveResponse.json();
+
+    assert.equal(activeResponse.status, 200);
+    assert.deepEqual(activeBody, {
+      service: "reader-service",
+      readerId: "r-201",
+      active: true
+    });
+    assert.equal(inactiveResponse.status, 200);
+    assert.deepEqual(inactiveBody, {
+      service: "reader-service",
+      readerId: "r-203",
+      active: false
+    });
+  });
+});
+
+test("GET /reader/:id/status returns 404 for an unknown reader", async () => {
+  await withServer(async (server) => {
+    const response = await fetch(endpoint(server, "/reader/r-missing/status"));
+    const body = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.equal(body.service, "reader-service");
+    assert.equal(body.error, "reader_not_found");
   });
 });
 

@@ -1,17 +1,18 @@
 const API_BASE_URL = "{{ api_base_url }}";
 
 const buttons = document.querySelectorAll("[data-path]");
+const createOrderButton = document.querySelector("[data-create-order]");
 const statusEl = document.querySelector("#status");
 const endpointEl = document.querySelector("#endpoint");
 const resultEl = document.querySelector("#result");
 
 function setBusy(isBusy) {
-  buttons.forEach((button) => {
+  [...buttons, createOrderButton].filter(Boolean).forEach((button) => {
     button.disabled = isBusy;
   });
 }
 
-async function loadPath(path) {
+async function sendRequest(path, options = {}, successStatus = "Loaded") {
   const url = `${API_BASE_URL}${path}`;
   statusEl.textContent = "Loading";
   endpointEl.textContent = url;
@@ -19,23 +20,59 @@ async function loadPath(path) {
   setBusy(true);
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, options);
     const body = await response.json();
 
     if (!response.ok) {
-      throw new Error(JSON.stringify(body, null, 2));
+      statusEl.textContent = "Error";
+      resultEl.textContent = JSON.stringify(body, null, 2);
+      return { ok: false, body };
     }
 
-    statusEl.textContent = "Loaded";
+    statusEl.textContent = successStatus;
     resultEl.textContent = JSON.stringify(body, null, 2);
+    return { ok: true, body };
   } catch (error) {
     statusEl.textContent = "Error";
     resultEl.textContent = error.message || String(error);
+    return { ok: false, error };
   } finally {
     setBusy(false);
   }
 }
 
+async function loadPath(path) {
+  return sendRequest(path);
+}
+
+async function createSampleOrder() {
+  return sendRequest(
+    "/order",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        readerId: "r-201",
+        bookId: "b-101"
+      })
+    },
+    "Created"
+  );
+}
+
 buttons.forEach((button) => {
   button.addEventListener("click", () => loadPath(button.dataset.path));
 });
+
+if (createOrderButton) {
+  createOrderButton.addEventListener("click", () => createSampleOrder());
+}
+
+if (typeof window !== "undefined") {
+  window.MiniBookHub = {
+    loadPath,
+    createSampleOrder
+  };
+}

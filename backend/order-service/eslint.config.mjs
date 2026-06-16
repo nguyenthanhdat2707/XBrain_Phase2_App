@@ -15,7 +15,8 @@ export default [
         fetch: "readonly",
         module: "readonly",
         process: "readonly",
-        require: "readonly"
+        require: "readonly",
+        URL: "readonly"
       }
     },
     rules: {

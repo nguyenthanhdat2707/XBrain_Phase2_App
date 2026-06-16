@@ -43,7 +43,74 @@ test("GET /book returns book data", async () => {
     assert.equal(body.service, "book-service");
     assert.equal(Array.isArray(body.data), true);
     assert.equal(body.data.length, 3);
-    assert.deepEqual(Object.keys(body.data[0]).sort(), ["author", "id", "title"]);
+    assert.deepEqual(Object.keys(body.data[0]).sort(), [
+      "author",
+      "availableCopies",
+      "id",
+      "title"
+    ]);
+  });
+});
+
+test("GET /book/:id returns one book", async () => {
+  await withServer(async (server) => {
+    const response = await fetch(endpoint(server, "/book/b-101"));
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.service, "book-service");
+    assert.deepEqual(body.data, {
+      id: "b-101",
+      title: "Cloud Notes",
+      author: "A. Nguyen",
+      availableCopies: 3
+    });
+  });
+});
+
+test("GET /book/:id returns 404 for an unknown book", async () => {
+  await withServer(async (server) => {
+    const response = await fetch(endpoint(server, "/book/b-missing"));
+    const body = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.equal(body.service, "book-service");
+    assert.equal(body.error, "book_not_found");
+  });
+});
+
+test("GET /book/:id/availability returns availability", async () => {
+  await withServer(async (server) => {
+    const availableResponse = await fetch(endpoint(server, "/book/b-101/availability"));
+    const availableBody = await availableResponse.json();
+    const unavailableResponse = await fetch(endpoint(server, "/book/b-102/availability"));
+    const unavailableBody = await unavailableResponse.json();
+
+    assert.equal(availableResponse.status, 200);
+    assert.deepEqual(availableBody, {
+      service: "book-service",
+      bookId: "b-101",
+      available: true,
+      availableCopies: 3
+    });
+    assert.equal(unavailableResponse.status, 200);
+    assert.deepEqual(unavailableBody, {
+      service: "book-service",
+      bookId: "b-102",
+      available: false,
+      availableCopies: 0
+    });
+  });
+});
+
+test("GET /book/:id/availability returns 404 for an unknown book", async () => {
+  await withServer(async (server) => {
+    const response = await fetch(endpoint(server, "/book/b-missing/availability"));
+    const body = await response.json();
+
+    assert.equal(response.status, 404);
+    assert.equal(body.service, "book-service");
+    assert.equal(body.error, "book_not_found");
   });
 });
 

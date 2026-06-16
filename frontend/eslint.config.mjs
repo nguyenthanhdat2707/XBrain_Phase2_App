@@ -12,7 +12,8 @@ export default [
       sourceType: "script",
       globals: {
         document: "readonly",
-        fetch: "readonly"
+        fetch: "readonly",
+        window: "readonly"
       }
     }
   },

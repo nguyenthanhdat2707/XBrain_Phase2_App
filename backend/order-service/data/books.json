@@ -1,0 +1,20 @@
+[
+  {
+    "id": "b-101",
+    "title": "Cloud Notes",
+    "author": "A. Nguyen",
+    "availableCopies": 3
+  },
+  {
+    "id": "b-102",
+    "title": "Kubernetes Field Guide",
+    "author": "M. Tran",
+    "availableCopies": 0
+  },
+  {
+    "id": "b-103",
+    "title": "Terraform Lab Manual",
+    "author": "L. Pham",
+    "availableCopies": 2
+  }
+]

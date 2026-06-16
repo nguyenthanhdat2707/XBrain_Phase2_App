@@ -1,0 +1,242 @@
+name: app-ci
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - "fix/**"
+      - "chore/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    name: detect affected paths
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      book_service: ${{ steps.filter.outputs.book_service }}
+      reader_service: ${{ steps.filter.outputs.reader_service }}
+      order_service: ${{ steps.filter.outputs.order_service }}
+      shared: ${{ steps.filter.outputs.shared }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect changed areas
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+            book_service:
+              - 'backend/book-service/**'
+            reader_service:
+              - 'backend/reader-service/**'
+            order_service:
+              - 'backend/order-service/**'
+            shared:
+              - 'package.json'
+              - 'package-lock.json'
+              - 'pnpm-lock.yaml'
+              - 'yarn.lock'
+              - '.github/workflows/**'
+              - 'Dockerfile'
+              - 'docker/**'
+              - 'scripts/**'
+              - 'shared/**'
+              - '.prettierrc'
+              - '.prettierrc.*'
+              - '.eslint*'
+              - 'eslint.config.*'
+              - 'tsconfig*.json'
+              - '.nvmrc'
+              - '.node-version'
+
+  secret-scan:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  frontend-checks:
+    name: frontend checks
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - secret-scan
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.shared == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Format check
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Type/static check
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Unit test
+        working-directory: frontend
+        run: npm test
+
+      - name: Docker build check
+        if: ${{ hashFiles('frontend/Dockerfile') != '' }}
+        run: docker build --pull --tag mini-book-hub-frontend:feature-ci ./frontend
+
+  book-service-checks:
+    name: book-service checks
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - secret-scan
+    if: ${{ needs.detect-changes.outputs.book_service == 'true' || needs.detect-changes.outputs.shared == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/book-service/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend/book-service
+        run: npm ci
+
+      - name: Format check
+        working-directory: backend/book-service
+        run: npm run format:check
+
+      - name: Lint
+        working-directory: backend/book-service
+        run: npm run lint
+
+      - name: Type/static check
+        working-directory: backend/book-service
+        run: npm run typecheck
+
+      - name: Unit test
+        working-directory: backend/book-service
+        run: npm test
+
+      - name: Docker build check
+        if: ${{ hashFiles('backend/book-service/Dockerfile') != '' }}
+        run: docker build --pull --tag mini-book-hub-book-service:feature-ci ./backend/book-service
+
+  reader-service-checks:
+    name: reader-service checks
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - secret-scan
+    if: ${{ needs.detect-changes.outputs.reader_service == 'true' || needs.detect-changes.outputs.shared == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/reader-service/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend/reader-service
+        run: npm ci
+
+      - name: Format check
+        working-directory: backend/reader-service
+        run: npm run format:check
+
+      - name: Lint
+        working-directory: backend/reader-service
+        run: npm run lint
+
+      - name: Type/static check
+        working-directory: backend/reader-service
+        run: npm run typecheck
+
+      - name: Unit test
+        working-directory: backend/reader-service
+        run: npm test
+
+      - name: Docker build check
+        if: ${{ hashFiles('backend/reader-service/Dockerfile') != '' }}
+        run: docker build --pull --tag mini-book-hub-reader-service:feature-ci ./backend/reader-service
+
+  order-service-checks:
+    name: order-service checks
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - secret-scan
+    if: ${{ needs.detect-changes.outputs.order_service == 'true' || needs.detect-changes.outputs.shared == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/order-service/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend/order-service
+        run: npm ci
+
+      - name: Format check
+        working-directory: backend/order-service
+        run: npm run format:check
+
+      - name: Lint
+        working-directory: backend/order-service
+        run: npm run lint
+
+      - name: Type/static check
+        working-directory: backend/order-service
+        run: npm run typecheck
+
+      - name: Unit test
+        working-directory: backend/order-service
+        run: npm test
+
+      - name: Docker build check
+        if: ${{ hashFiles('backend/order-service/Dockerfile') != '' }}
+        run: docker build --pull --tag mini-book-hub-order-service:feature-ci ./backend/order-service

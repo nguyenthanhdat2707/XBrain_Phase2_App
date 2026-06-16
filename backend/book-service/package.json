@@ -1,0 +1,27 @@
+{
+  "name": "book-service",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "format": "prettier --write server.js test/**/*.js package.json tsconfig.json eslint.config.mjs README.md",
+    "format:check": "prettier --check server.js test/**/*.js package.json tsconfig.json eslint.config.mjs README.md",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.29.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.19.0",
+    "eslint": "^9.29.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini Book Hub</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div>
+          <p class="eyebrow">AWS self-managed Kubernetes lab</p>
+          <h1>Mini Book Hub</h1>
+        </div>
+      </header>
+
+      <section class="actions" aria-label="API actions">
+        <button type="button" data-path="/book">Load Books</button>
+        <button type="button" data-path="/reader">Load Readers</button>
+        <button type="button" data-path="/order">Load Orders</button>
+      </section>
+
+      <section class="result-panel" aria-live="polite">
+        <div class="result-header">
+          <span id="status">Ready</span>
+          <code id="endpoint">No request yet</code>
+        </div>
+        <pre id="result">Click a button to load lab data.</pre>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

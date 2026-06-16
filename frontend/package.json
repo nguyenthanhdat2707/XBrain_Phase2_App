@@ -1,0 +1,17 @@
+{
+  "name": "mini-book-hub-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write index.html style.css README.md package.json eslint.config.mjs scripts/**/*.mjs test/**/*.mjs && prettier --write --parser babel app.js.tpl",
+    "format:check": "prettier --check index.html style.css README.md package.json eslint.config.mjs scripts/**/*.mjs test/**/*.mjs && prettier --check --parser babel app.js.tpl",
+    "lint": "eslint app.js.tpl eslint.config.mjs scripts/**/*.mjs test/**/*.mjs",
+    "typecheck": "node scripts/check-template.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.29.0",
+    "eslint": "^9.29.0",
+    "prettier": "^3.5.3"
+  }
+}

@@ -18,3 +18,9 @@ code -> test -> build image -> push registry
 ```
 
 The current GitHub Actions workflow implements feature branch CI for basic cleanliness checks. It runs affected component checks and Docker build validation without pushing images or creating official artifacts.
+
+## PR Impact Gate
+
+This workflow tests the merge-result of a PR, runs impact-based checks, builds candidate images from the tested merge-result, pushes immutable GHCR digests, and writes preview metadata to the GitOps repository.
+
+It does not deploy Kubernetes resources. Runtime preview is handled later by the GitOps repo, AppSet, Argo CD, and a smoke Job.

@@ -1,0 +1,563 @@
+name: pr-impact-gate
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pr-impact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merge result
+        uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  detect-impact:
+    name: detect-impact
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.detect.outputs.frontend }}
+      book_service: ${{ steps.detect.outputs.book_service }}
+      reader_service: ${{ steps.detect.outputs.reader_service }}
+      order_service: ${{ steps.detect.outputs.order_service }}
+      shared: ${{ steps.detect.outputs.shared }}
+      contract: ${{ steps.detect.outputs.contract }}
+      docker_frontend: ${{ steps.detect.outputs.docker_frontend }}
+      docker_book_service: ${{ steps.detect.outputs.docker_book_service }}
+      docker_reader_service: ${{ steps.detect.outputs.docker_reader_service }}
+      docker_order_service: ${{ steps.detect.outputs.docker_order_service }}
+      build_frontend: ${{ steps.detect.outputs.build_frontend }}
+      build_book_service: ${{ steps.detect.outputs.build_book_service }}
+      build_reader_service: ${{ steps.detect.outputs.build_reader_service }}
+      build_order_service: ${{ steps.detect.outputs.build_order_service }}
+      affected_components: ${{ steps.detect.outputs.affected_components }}
+      smoke_profile: ${{ steps.detect.outputs.smoke_profile }}
+      base_main_sha: ${{ steps.detect.outputs.base_main_sha }}
+      merge_result_sha: ${{ steps.detect.outputs.merge_result_sha }}
+    steps:
+      - name: Checkout merge result
+        uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Detect changed areas
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE_MAIN_SHA="${{ github.event.pull_request.base.sha }}"
+          MERGE_RESULT_SHA="$(git rev-parse HEAD)"
+          git diff --name-only "$BASE_MAIN_SHA" "$MERGE_RESULT_SHA" | sort -u > changed-files.txt
+
+          frontend=false
+          book_service=false
+          reader_service=false
+          order_service=false
+          shared=false
+          contract=false
+          docker_frontend=false
+          docker_book_service=false
+          docker_reader_service=false
+          docker_order_service=false
+
+          if [ ! -s changed-files.txt ]; then
+            shared=true
+          fi
+
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+
+            case "$file" in
+              frontend/Dockerfile)
+                frontend=true
+                docker_frontend=true
+                ;;
+              frontend/*)
+                frontend=true
+                ;;
+              backend/book-service/Dockerfile)
+                book_service=true
+                docker_book_service=true
+                ;;
+              backend/book-service/*)
+                book_service=true
+                ;;
+              backend/reader-service/Dockerfile)
+                reader_service=true
+                docker_reader_service=true
+                ;;
+              backend/reader-service/*)
+                reader_service=true
+                ;;
+              backend/order-service/Dockerfile)
+                order_service=true
+                docker_order_service=true
+                ;;
+              backend/order-service/*)
+                order_service=true
+                ;;
+              contracts/* | schemas/*)
+                contract=true
+                ;;
+              shared/* | scripts/* | package-lock.json | package.json | .github/workflows/*)
+                shared=true
+                ;;
+              *)
+                shared=true
+                ;;
+            esac
+          done < changed-files.txt
+
+          json_array() {
+            local first=true
+            local output="["
+
+            for item in "$@"; do
+              if [ "$first" = true ]; then
+                first=false
+              else
+                output+=","
+              fi
+              output+="\"$item\""
+            done
+
+            output+="]"
+            printf '%s' "$output"
+          }
+
+          components=()
+
+          if [ "$shared" = true ] || [ "$contract" = true ]; then
+            components=("frontend" "book-service" "reader-service" "order-service")
+            smoke_profile="network-runtime"
+            build_frontend=true
+            build_book_service=true
+            build_reader_service=true
+            build_order_service=true
+          else
+            build_frontend=false
+            build_book_service=false
+            build_reader_service=false
+            build_order_service=false
+
+            if [ "$frontend" = true ]; then
+              components+=("frontend")
+              build_frontend=true
+            fi
+            if [ "$book_service" = true ]; then
+              components+=("book-service")
+              build_book_service=true
+            fi
+            if [ "$reader_service" = true ]; then
+              components+=("reader-service")
+              build_reader_service=true
+            fi
+            if [ "$order_service" = true ]; then
+              components+=("order-service")
+              build_order_service=true
+            fi
+
+            if [ "${#components[@]}" -eq 0 ]; then
+              components=("frontend" "book-service" "reader-service" "order-service")
+              smoke_profile="network-runtime"
+              build_frontend=true
+              build_book_service=true
+              build_reader_service=true
+              build_order_service=true
+            elif [ "${#components[@]}" -eq 1 ]; then
+              smoke_profile="${components[0]}"
+            else
+              smoke_profile="network-runtime"
+            fi
+          fi
+
+          affected_components="$(json_array "${components[@]}")"
+
+          {
+            echo "frontend=$frontend"
+            echo "book_service=$book_service"
+            echo "reader_service=$reader_service"
+            echo "order_service=$order_service"
+            echo "shared=$shared"
+            echo "contract=$contract"
+            echo "docker_frontend=$docker_frontend"
+            echo "docker_book_service=$docker_book_service"
+            echo "docker_reader_service=$docker_reader_service"
+            echo "docker_order_service=$docker_order_service"
+            echo "build_frontend=$build_frontend"
+            echo "build_book_service=$build_book_service"
+            echo "build_reader_service=$build_reader_service"
+            echo "build_order_service=$build_order_service"
+            echo "affected_components=$affected_components"
+            echo "smoke_profile=$smoke_profile"
+            echo "base_main_sha=$BASE_MAIN_SHA"
+            echo "merge_result_sha=$MERGE_RESULT_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+  impact-tests:
+    name: impact-tests
+    runs-on: ubuntu-latest
+    needs:
+      - detect-impact
+    steps:
+      - name: Checkout merge result
+        uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Frontend checks
+        if: ${{ needs.detect-impact.outputs.frontend == 'true' || needs.detect-impact.outputs.shared == 'true' || needs.detect-impact.outputs.contract == 'true' }}
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Book service checks
+        if: ${{ needs.detect-impact.outputs.book_service == 'true' || needs.detect-impact.outputs.shared == 'true' || needs.detect-impact.outputs.contract == 'true' }}
+        working-directory: backend/book-service
+        run: |
+          npm ci
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Reader service checks
+        if: ${{ needs.detect-impact.outputs.reader_service == 'true' || needs.detect-impact.outputs.shared == 'true' || needs.detect-impact.outputs.contract == 'true' }}
+        working-directory: backend/reader-service
+        run: |
+          npm ci
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Order service checks
+        if: ${{ needs.detect-impact.outputs.order_service == 'true' || needs.detect-impact.outputs.shared == 'true' || needs.detect-impact.outputs.contract == 'true' }}
+        working-directory: backend/order-service
+        run: |
+          npm ci
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
+
+      - name: Frontend consumer tests for backend impact
+        if: ${{ (needs.detect-impact.outputs.book_service == 'true' || needs.detect-impact.outputs.reader_service == 'true' || needs.detect-impact.outputs.order_service == 'true') && needs.detect-impact.outputs.frontend != 'true' && needs.detect-impact.outputs.shared != 'true' && needs.detect-impact.outputs.contract != 'true' }}
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+
+      # TODO: Wire real contract tests when the app repo owns book availability,
+      # reader status, and order create contracts. This step fails if contract or
+      # schema directories are introduced without a concrete validator.
+      - name: Require real contract/schema test wiring
+        if: ${{ needs.detect-impact.outputs.contract == 'true' || needs.detect-impact.outputs.shared == 'true' || needs.detect-impact.outputs.book_service == 'true' || needs.detect-impact.outputs.reader_service == 'true' || needs.detect-impact.outputs.order_service == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -d contracts ] || [ -d schemas ]; then
+            echo "::error::App-owned contracts/schemas exist, but pr-impact-gate has no real validator wired yet. Add concrete contract/schema test commands before merging."
+            exit 1
+          fi
+
+          echo "::notice::No app-owned contract schemas/tests found yet."
+
+  build-candidate-images:
+    name: build-candidate-images
+    runs-on: ubuntu-latest
+    needs:
+      - secret-scan
+      - detect-impact
+      - impact-tests
+    outputs:
+      candidate_images: ${{ steps.collect.outputs.candidate_images }}
+    steps:
+      - name: Checkout merge result
+        uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Capture image tag inputs
+        id: image_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          merge_result_sha="${{ needs.detect-impact.outputs.merge_result_sha }}"
+          echo "short_sha=${merge_result_sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push frontend candidate
+        id: build_frontend
+        if: ${{ needs.detect-impact.outputs.build_frontend == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ghcr.io/nguyenthanhdat2707/mini-book-hub-frontend:pr-${{ github.event.pull_request.number }}-${{ steps.image_tag.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.detect-impact.outputs.merge_result_sha }}
+
+      - name: Build and push book-service candidate
+        id: build_book_service
+        if: ${{ needs.detect-impact.outputs.build_book_service == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/book-service
+          file: ./backend/book-service/Dockerfile
+          push: true
+          tags: ghcr.io/nguyenthanhdat2707/mini-book-hub-book-service:pr-${{ github.event.pull_request.number }}-${{ steps.image_tag.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.detect-impact.outputs.merge_result_sha }}
+
+      - name: Build and push reader-service candidate
+        id: build_reader_service
+        if: ${{ needs.detect-impact.outputs.build_reader_service == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/reader-service
+          file: ./backend/reader-service/Dockerfile
+          push: true
+          tags: ghcr.io/nguyenthanhdat2707/mini-book-hub-reader-service:pr-${{ github.event.pull_request.number }}-${{ steps.image_tag.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.detect-impact.outputs.merge_result_sha }}
+
+      - name: Build and push order-service candidate
+        id: build_order_service
+        if: ${{ needs.detect-impact.outputs.build_order_service == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/order-service
+          file: ./backend/order-service/Dockerfile
+          push: true
+          tags: ghcr.io/nguyenthanhdat2707/mini-book-hub-order-service:pr-${{ github.event.pull_request.number }}-${{ steps.image_tag.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.detect-impact.outputs.merge_result_sha }}
+
+      - name: Collect candidate image digests
+        id: collect
+        env:
+          FRONTEND_DIGEST: ${{ steps.build_frontend.outputs.digest }}
+          BOOK_SERVICE_DIGEST: ${{ steps.build_book_service.outputs.digest }}
+          READER_SERVICE_DIGEST: ${{ steps.build_reader_service.outputs.digest }}
+          ORDER_SERVICE_DIGEST: ${{ steps.build_order_service.outputs.digest }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+
+          const images = {};
+          const registry = "ghcr.io/nguyenthanhdat2707";
+
+          if (process.env.FRONTEND_DIGEST) {
+            images.frontend = `${registry}/mini-book-hub-frontend@${process.env.FRONTEND_DIGEST}`;
+          }
+          if (process.env.BOOK_SERVICE_DIGEST) {
+            images["book-service"] = `${registry}/mini-book-hub-book-service@${process.env.BOOK_SERVICE_DIGEST}`;
+          }
+          if (process.env.READER_SERVICE_DIGEST) {
+            images["reader-service"] = `${registry}/mini-book-hub-reader-service@${process.env.READER_SERVICE_DIGEST}`;
+          }
+          if (process.env.ORDER_SERVICE_DIGEST) {
+            images["order-service"] = `${registry}/mini-book-hub-order-service@${process.env.ORDER_SERVICE_DIGEST}`;
+          }
+
+          if (Object.keys(images).length === 0) {
+            console.error("No candidate image digests were produced.");
+            process.exit(1);
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `candidate_images=${JSON.stringify(images)}\n`);
+          NODE
+
+  write-preview-metadata:
+    name: write-preview-metadata
+    runs-on: ubuntu-latest
+    needs:
+      - detect-impact
+      - build-candidate-images
+    env:
+      GITOPS_REPO_TOKEN: ${{ secrets.GITOPS_REPO_TOKEN }}
+    outputs:
+      metadata_path: ${{ steps.metadata.outputs.metadata_path }}
+    steps:
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v6
+        with:
+          repository: nguyenthanhdat2707/XBrain_Phase2_Gitops
+          token: ${{ env.GITOPS_REPO_TOKEN }}
+          ref: main
+          path: gitops
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Write preview metadata
+        id: metadata
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_MAIN_SHA: ${{ needs.detect-impact.outputs.base_main_sha }}
+          MERGE_RESULT_SHA: ${{ needs.detect-impact.outputs.merge_result_sha }}
+          AFFECTED_COMPONENTS: ${{ needs.detect-impact.outputs.affected_components }}
+          CANDIDATE_IMAGES: ${{ needs.build-candidate-images.outputs.candidate_images }}
+          SMOKE_PROFILE: ${{ needs.detect-impact.outputs.smoke_profile }}
+          CI_RUN_ID: ${{ github.run_id }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const path = require("path");
+
+          const prNumber = Number.parseInt(process.env.PR_NUMBER, 10);
+          const metadataPath = `preview-metadata/pr-${prNumber}.json`;
+          const fullPath = path.join("gitops", metadataPath);
+
+          const metadata = {
+            apiVersion: "preview.mini-book-hub.io/v1",
+            kind: "PreviewMetadata",
+            pr: prNumber,
+            status: "preview-ready",
+            baseMainSha: process.env.BASE_MAIN_SHA,
+            mergeResultSha: process.env.MERGE_RESULT_SHA,
+            affectedComponents: JSON.parse(process.env.AFFECTED_COMPONENTS),
+            candidateImages: JSON.parse(process.env.CANDIDATE_IMAGES),
+            stableImageLock: "image-locks/main.json",
+            smokeProfile: process.env.SMOKE_PROFILE,
+            createdBy: {
+              ciRunId: process.env.CI_RUN_ID,
+              workflow: "pr-impact-gate"
+            }
+          };
+
+          fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+          fs.writeFileSync(fullPath, `${JSON.stringify(metadata, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `metadata_path=${metadataPath}\n`);
+          NODE
+
+      - name: Validate metadata before commit
+        working-directory: gitops
+        env:
+          METADATA_PATH: ${{ steps.metadata.outputs.metadata_path }}
+        run: npx --yes ajv-cli@5.0.0 validate --spec=draft2020 -s schemas/preview-metadata.v1.schema.json -d "$METADATA_PATH"
+
+      - name: Commit and push metadata
+        working-directory: gitops
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          METADATA_PATH: ${{ steps.metadata.outputs.metadata_path }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "$METADATA_PATH"
+
+          if git diff --cached --quiet; then
+            echo "No metadata changes to commit."
+            exit 0
+          fi
+
+          git commit -m "preview: update metadata for PR #${PR_NUMBER}"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+  validate-preview-metadata:
+    name: validate-preview-metadata
+    runs-on: ubuntu-latest
+    needs:
+      - write-preview-metadata
+    env:
+      GITOPS_REPO_TOKEN: ${{ secrets.GITOPS_REPO_TOKEN }}
+    steps:
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v6
+        with:
+          repository: nguyenthanhdat2707/XBrain_Phase2_Gitops
+          token: ${{ env.GITOPS_REPO_TOKEN }}
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate committed metadata
+        env:
+          METADATA_PATH: ${{ needs.write-preview-metadata.outputs.metadata_path }}
+        run: npx --yes ajv-cli@5.0.0 validate --spec=draft2020 -s schemas/preview-metadata.v1.schema.json -d "$METADATA_PATH"
+
+  mark-preview-ready:
+    name: mark-preview-ready
+    runs-on: ubuntu-latest
+    needs:
+      - validate-preview-metadata
+    steps:
+      - name: Add preview-ready label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          gh label create preview-ready \
+            --repo "$REPOSITORY" \
+            --color "2ea44f" \
+            --description "Preview metadata is ready" || true
+
+          gh pr edit "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --add-label preview-ready

@@ -55,7 +55,8 @@ jobs:
       build_reader_service: ${{ steps.detect.outputs.build_reader_service }}
       build_order_service: ${{ steps.detect.outputs.build_order_service }}
       affected_components: ${{ steps.detect.outputs.affected_components }}
-      smoke_profile: ${{ steps.detect.outputs.smoke_profile }}
+      preview_profile: ${{ steps.detect.outputs.preview_profile }}
+      smoke_profiles: ${{ steps.detect.outputs.smoke_profiles }}
       base_main_sha: ${{ steps.detect.outputs.base_main_sha }}
       merge_result_sha: ${{ steps.detect.outputs.merge_result_sha }}
     steps:
@@ -152,10 +153,26 @@ jobs:
           }
 
           components=()
+          smoke_profiles=()
+          preview_profile=""
+
+          append_unique() {
+            local item="$1"
+            local existing
+
+            for existing in "${smoke_profiles[@]}"; do
+              if [ "$existing" = "$item" ]; then
+                return
+              fi
+            done
+
+            smoke_profiles+=("$item")
+          }
 
           if [ "$shared" = true ] || [ "$contract" = true ]; then
             components=("frontend" "book-service" "reader-service" "order-service")
-            smoke_profile="network-runtime"
+            preview_profile="network-runtime"
+            smoke_profiles=("frontend" "book-service" "reader-service" "order-service" "network-runtime")
             build_frontend=true
             build_book_service=true
             build_reader_service=true
@@ -185,19 +202,40 @@ jobs:
 
             if [ "${#components[@]}" -eq 0 ]; then
               components=("frontend" "book-service" "reader-service" "order-service")
-              smoke_profile="network-runtime"
+              preview_profile="network-runtime"
+              smoke_profiles=("frontend" "book-service" "reader-service" "order-service" "network-runtime")
               build_frontend=true
               build_book_service=true
               build_reader_service=true
               build_order_service=true
-            elif [ "${#components[@]}" -eq 1 ]; then
-              smoke_profile="${components[0]}"
             else
-              smoke_profile="network-runtime"
+              if [ "$frontend" = true ]; then
+                append_unique "frontend"
+              fi
+              if [ "$book_service" = true ]; then
+                append_unique "book-service"
+                append_unique "order-service"
+              fi
+              if [ "$reader_service" = true ]; then
+                append_unique "reader-service"
+                append_unique "order-service"
+              fi
+              if [ "$order_service" = true ]; then
+                append_unique "order-service"
+              fi
+
+              if [ "$frontend" = true ] && { [ "$book_service" = true ] || [ "$reader_service" = true ] || [ "$order_service" = true ]; }; then
+                preview_profile="network-runtime"
+              elif [ "$frontend" = true ]; then
+                preview_profile="frontend"
+              else
+                preview_profile="order-service"
+              fi
             fi
           fi
 
           affected_components="$(json_array "${components[@]}")"
+          smoke_profiles_json="$(json_array "${smoke_profiles[@]}")"
 
           {
             echo "frontend=$frontend"
@@ -215,7 +253,8 @@ jobs:
             echo "build_reader_service=$build_reader_service"
             echo "build_order_service=$build_order_service"
             echo "affected_components=$affected_components"
-            echo "smoke_profile=$smoke_profile"
+            echo "preview_profile=$preview_profile"
+            echo "smoke_profiles=$smoke_profiles_json"
             echo "base_main_sha=$BASE_MAIN_SHA"
             echo "merge_result_sha=$MERGE_RESULT_SHA"
           } >> "$GITHUB_OUTPUT"
@@ -453,7 +492,8 @@ jobs:
           MERGE_RESULT_SHA: ${{ needs.detect-impact.outputs.merge_result_sha }}
           AFFECTED_COMPONENTS: ${{ needs.detect-impact.outputs.affected_components }}
           CANDIDATE_IMAGES: ${{ needs.build-candidate-images.outputs.candidate_images }}
-          SMOKE_PROFILE: ${{ needs.detect-impact.outputs.smoke_profile }}
+          PREVIEW_PROFILE: ${{ needs.detect-impact.outputs.preview_profile }}
+          SMOKE_PROFILES: ${{ needs.detect-impact.outputs.smoke_profiles }}
           CI_RUN_ID: ${{ github.run_id }}
         run: |
           node <<'NODE'
@@ -474,7 +514,8 @@ jobs:
             affectedComponents: JSON.parse(process.env.AFFECTED_COMPONENTS),
             candidateImages: JSON.parse(process.env.CANDIDATE_IMAGES),
             stableImageLock: "image-locks/main.json",
-            smokeProfile: process.env.SMOKE_PROFILE,
+            previewProfile: process.env.PREVIEW_PROFILE,
+            smokeProfiles: JSON.parse(process.env.SMOKE_PROFILES),
             createdBy: {
               ciRunId: process.env.CI_RUN_ID,
               workflow: "pr-impact-gate"

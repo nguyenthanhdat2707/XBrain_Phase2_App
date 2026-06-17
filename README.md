@@ -34,3 +34,12 @@ The current GitHub Actions workflow implements feature branch CI for basic clean
 This workflow tests the merge-result of a PR, runs impact-based checks, builds candidate images from the tested merge-result, pushes immutable GHCR digests, and writes preview metadata to the GitOps repository.
 
 It does not deploy Kubernetes resources. Runtime preview is handled later by the GitOps repo, AppSet, Argo CD, and a smoke Job.
+
+Preview impact graph:
+
+```text
+book-service changed   -> deploy order-service preview, smoke book-service and order-service
+reader-service changed -> deploy order-service preview, smoke reader-service and order-service
+order-service changed  -> deploy order-service preview, smoke order-service
+frontend changed       -> deploy frontend preview, smoke frontend
+```

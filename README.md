@@ -11,6 +11,16 @@ It builds frontend and backend service images. It does not own Kubernetes desire
 - `backend/reader-service`: Node.js API for reader data.
 - `backend/order-service`: Node.js API for order data.
 
+## Observability
+
+Backend services expose Prometheus metrics on `/metrics` and `/metric`.
+
+The metrics include:
+
+- `mini_book_hub_service_info`
+- `mini_book_hub_http_requests_total`
+- `mini_book_hub_http_request_duration_seconds`
+
 ## Lifecycle
 
 ```text

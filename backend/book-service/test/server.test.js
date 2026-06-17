@@ -138,3 +138,21 @@ test("GET /version returns service version", async () => {
     assert.match(body.version, /^\d+\.\d+\.\d+$/);
   });
 });
+
+test("GET /metrics exposes Prometheus metrics", async () => {
+  await withServer(async (server) => {
+    await fetch(endpoint(server, "/book"));
+
+    const response = await fetch(endpoint(server, "/metrics"));
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/plain/);
+    assert.match(body, /mini_book_hub_service_info\{service="book-service"\} 1/);
+    assert.match(body, /mini_book_hub_http_requests_total/);
+    assert.match(body, /service="book-service"/);
+    assert.match(body, /route="\/book"/);
+    assert.match(body, /status_code="200"/);
+    assert.match(body, /mini_book_hub_http_request_duration_seconds_bucket/);
+  });
+});

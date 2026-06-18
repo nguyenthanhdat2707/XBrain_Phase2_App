@@ -527,6 +527,12 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `metadata_path=${metadataPath}\n`);
           NODE
 
+      - name: Format preview metadata
+        working-directory: gitops
+        env:
+          METADATA_PATH: ${{ steps.metadata.outputs.metadata_path }}
+        run: npx --yes prettier@3.5.3 --write "$METADATA_PATH"
+
       - name: Validate metadata before commit
         working-directory: gitops
         env:

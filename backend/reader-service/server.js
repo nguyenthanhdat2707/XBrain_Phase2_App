@@ -122,7 +122,7 @@ app.get("/readyz", (_req, res) => {
 });
 
 app.get("/version", (_req, res) => {
-  res.json({ service: "reader-service", version: "1.0.0" });
+  res.json({ service: "reader-service", version: "1.0.1" });
 });
 
 if (require.main === module) {
